@@ -16,6 +16,7 @@ from turtle import __forwardmethods
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageTk
+import pycocotools.mask as coco_mask_tool
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -214,8 +215,11 @@ def draw_masks(draw, objects, obj_categories, ignore, alpha):
                     if m_:
                         draw.polygon(m_, outline=fill, fill=fill)
             # RLE mask for collection of objects (iscrowd=1)
-            elif isinstance(m, dict) and objects[i]["iscrowd"]:
-                mask = rle_to_mask(m["counts"][:-1], m["size"][0], m["size"][1])
+            elif isinstance(m, dict): #and objects[i]["iscrowd"]:
+                if type(m['counts']) is str:
+                    mask = coco_mask_tool.decode(m) * 255
+                else:
+                    mask = rle_to_mask(m['counts'][:-1], *m['size'])
                 mask = Image.fromarray(mask)
                 draw.bitmap((0, 0), mask, fill=fill)
 
