@@ -30,6 +30,7 @@ parser.add_argument(
     metavar="PATH",
     help="path to annotations json file",
 )
+parser.add_argument("-s", "--max-size", default=None, type=int, help="maximum height of image viewer")
 
 
 class Data:
@@ -85,6 +86,10 @@ class Data:
     def previous_image(self):
         """Loads the previous image in a list."""
         self.current_image = self.images.prev()
+        
+    def random_image(self):
+        """Loads the next image in a list."""
+        self.current_image = self.images.random()
 
 
 def parse_coco(annotations_file: str) -> tuple:
@@ -215,11 +220,14 @@ def draw_masks(draw, objects, obj_categories, ignore, alpha):
                     if m_:
                         draw.polygon(m_, outline=fill, fill=fill)
             # RLE mask for collection of objects (iscrowd=1)
-            elif isinstance(m, dict): #and objects[i]["iscrowd"]:
+            elif isinstance(m, dict):  #and objects[i]["iscrowd"]:
                 if type(m['counts']) is str:
                     mask = coco_mask_tool.decode(m) * 255
                 else:
-                    mask = rle_to_mask(m['counts'][:-1], *m['size'])
+                    if len(m['counts']) % 2:
+                        mask = rle_to_mask(m['counts'][:-1], *m['size'])
+                    else:
+                        mask = rle_to_mask(m['counts'], *m['size'])
                 mask = Image.fromarray(mask)
                 draw.bitmap((0, 0), mask, fill=fill)
 
@@ -271,6 +279,12 @@ class ImageList:
             self.n -= 1
             current_image = self.image_list[self.n]
         return current_image
+        
+    def random(self):
+        """Sets a random image as current."""
+        self.n = random.randint(0, self.max)
+        current_image = self.image_list[self.n]
+        return current_image    
 
 
 class ImagePanel(ttk.Frame):
@@ -511,7 +525,7 @@ class SlidersBar(ttk.Frame):
 
 
 class Controller:
-    def __init__(self, data, root, image_panel, statusbar, menu, objects_panel, sliders):
+    def __init__(self, data, root, image_panel, statusbar, menu, objects_panel, sliders, size=None):
         self.data = data  # data layer
         self.root = root  # root window
         self.image_panel = image_panel  # image panel
@@ -519,6 +533,7 @@ class Controller:
         self.menu = menu  # main menu on the top
         self.objects_panel = objects_panel
         self.sliders = sliders
+        self.size = size # max height of img
 
         # StatusBar Vars
         self.file_count_status = tk.StringVar()
@@ -669,8 +684,14 @@ class Controller:
         # Prepare PIL image for Tkinter
         img = self.current_composed_image
         w, h = img.size
-        img = ImageTk.PhotoImage(img)
+        if self.size is not None and h > self.size:
+            print('to_resize')
+            w = int(self.size/h * w)
+            h = self.size
+            img = img.resize((w, h))
 
+        img = ImageTk.PhotoImage(img)
+        
         # Set image as current
         self.image_panel.create_image(0, 0, image=img)
         self.image_panel.image = img
@@ -704,6 +725,13 @@ class Controller:
         self.selected_cats = None
         self.selected_objs = None
         self.update_img(local=False)
+        
+    def random_img(self, event=None):
+        self.data.random_image()
+        self.set_locals()
+        self.selected_cats = None
+        self.selected_objs = None
+        self.update_img(local=False)        
 
     def save_image(self, event=None):
         """Saves composed image as png file."""
@@ -847,7 +875,7 @@ class Controller:
         """Binds events."""
         # Navigation
         self.root.bind("<Left>", self.prev_img)
-        self.root.bind("<k>", self.prev_img)
+        self.root.bind("<k>", self.random_img)
         self.root.bind("<Right>", self.next_img)
         self.root.bind("<j>", self.next_img)
         self.root.bind("<Control-q>", self.exit)
@@ -894,7 +922,7 @@ def main():
     objects_panel = ObjectsPanel(root)
     menu = Menu(root)
     image_panel = ImagePanel(root)
-    Controller(data, root, image_panel, statusbar, menu, objects_panel, sliders)
+    Controller(data, root, image_panel, statusbar, menu, objects_panel, sliders, size=args.max_size)
     root.mainloop()
 
 
